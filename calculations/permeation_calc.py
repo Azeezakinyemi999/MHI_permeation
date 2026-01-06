@@ -30,7 +30,7 @@ def sieverts_concentration(K_s, pressure):
 
 def fick_flux(D, C_up, C_down, thickness):
     """
-    Calculate diffusive flux using Fick's first law.
+    Calculate diffusive flux using Fick's first law..
     
     Parameters
     ----------
