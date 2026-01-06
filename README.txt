@@ -69,4 +69,4 @@ Step 4.1: Get Experimental Data
 
 Phase 5: Analysis and Documentation (Days 11-12)
     Step 5.1: Sensitivity Analysis
-    Test sensitivity to parameters:
+    Test sensitivity to parameters
