@@ -65,7 +65,7 @@ def fick_flux(D, C_up, C_down, thickness):
 
 def calculate_simple_metal_flux(D, K_s, thickness, P_up, P_down):
     """
-    Calculate hydrogen permeation flux through clean metal.
+    Calculate hydrogen permeation flux through clean metal..
     
     Combines Sieverts' law for surface concentration with Fick's law
     for bulk diffusion.
