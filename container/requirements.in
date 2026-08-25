@@ -9,11 +9,19 @@ scipy==1.13.1        # brentq -> every interface-pressure solve
 pandas==2.3.3        # SA scan/cluster CSVs are written and re-read by pandas
 SALib==1.5.0         # 1.5.1+ calls np.trapezoid, which needs numpy>=2
 
+# Pinned for OFFLINE static export, not for numerics. kaleido 1.x replaced the
+# self-contained binary with a Chrome driver (via choreographer), so 1.3.0 fails
+# in this image with "Kaleido requires Google Chrome to be installed" -- and
+# installing Chrome needs network, which defeats the point. 0.2.1 ships its own
+# renderer and exports PDF/SVG with no browser. plotly is pinned with it because
+# letting kaleido resolve freely dragged plotly to 7.0.0, an unintended major bump.
+plotly==6.9.0
+kaleido==0.2.1
+
 # Floating = presentation layer only, no effect on computed values. These were
 # previously pinned to the last Python 3.9-compatible releases (ipython 8.18.1,
 # matplotlib 3.9.4); on 3.12 those pins are arbitrary, so let the resolver pick
 # and let the lock freeze the result.
 matplotlib
-plotly
 ipython
 jupyterlab
