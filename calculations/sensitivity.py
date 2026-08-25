@@ -1412,6 +1412,10 @@ def plot_regime_comparison_heatmap(givendata_results, output_metric, param_names
     # turns the colour encoding into decoration and leaves a reader unsure which
     # figure to quote. Raw magnitudes belong in a supplementary table; call
     # regime_comparison_matrix(..., normalize=None).to_latex() for one.
+    # Text contrast follows the RAMP's lightness, not the value's magnitude.
+    # viridis runs dark->bright, the opposite of YlOrRd, so low cells need light
+    # text and high cells need dark text. Carrying the YlOrRd rule across put
+    # white on bright yellow and near-black on dark purple -- both unreadable.
     flip = (vmax if normalized else np.nanmax(colour_mat.values)) * 0.55
     for i in range(colour_mat.shape[0]):
         for j in range(colour_mat.shape[1]):
@@ -1420,7 +1424,7 @@ def plot_regime_comparison_heatmap(givendata_results, output_metric, param_names
                 continue
             ax.text(j, i, f'{v:.2f}', ha='center', va='center',
                     fontsize=FONT_ANNOT,
-                    color='#f0f0f0' if v > flip else '#1a1a1a')
+                    color='#1a1a1a' if v > flip else '#f0f0f0')
 
     title = f'Cross-regime sensitivity ({index}) — {output_metric}'
     if normalized:
@@ -1491,9 +1495,37 @@ def _pcp_axis(df, col, log_dims):
     return v, col
 
 
+def _rgba(hex_color, alpha):
+    """'#RRGGBB' -> 'rgba(r,g,b,alpha)'. Plotly's Parcoords has no per-line
+    opacity, so transparency has to be baked into the colorscale entries."""
+    h = hex_color.lstrip('#')
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f'rgba({r},{g},{b},{alpha:.3f})'
+
+
+def _auto_opacity(n):
+    """Line opacity for `n` overplotted polylines.
+
+    A parallel-coordinates plot of a few thousand opaque lines is a solid wash in
+    its dense regions, and no palette fixes that -- the full regime dataset is
+    ~4500 rows. Roughly 400 visually distinct lines is where structure stays
+    readable, so fade beyond that.
+
+    The floor is 0.25, not lower. Plotly's Parcoords derives the colorbar from
+    the same colorscale as the lines, so alpha fades the legend swatches too; at
+    0.09 (what 4500 rows would otherwise give) the regime keys wash out to near
+    white and identity is lost. Below roughly 0.25, reach for `max_lines`
+    instead -- subsampling thins the plot while leaving colour at full strength.
+    """
+    if n <= 400:
+        return 1.0
+    return float(min(1.0, max(0.25, 400.0 / n)))
+
+
 def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
                                  title='', save_html=None,
-                                 width=None, height=520, labelangle=30):
+                                 width=None, height=520, labelangle=30,
+                                 line_opacity=None, max_lines=None, seed=0):
     """
     Per-sample parallel-coordinates plot (covers views A/B/D).
 
@@ -1504,8 +1536,30 @@ def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
     save_html  : optional path to write a standalone interactive HTML.
     width      : figure width in px; default scales with the number of axes so the
                  axis titles don't overlap. height/labelangle tune layout.
+    line_opacity : per-line alpha. None (default) picks one from the row count via
+                 `_auto_opacity`; pass 1.0 to restore fully opaque lines.
+    max_lines  : if set and the frame is larger, draw a reproducible stratified
+                 subsample of this many rows (equal share per regime where a
+                 'regime' column exists). Density is what makes these figures
+                 unreadable in print, and this is the honest way to reduce it --
+                 it thins the plot without fading the colour, so the regime keys
+                 stay full strength. **~800 is the recommended value for a
+                 publication figure**; state in the caption that a subsample is
+                 shown and quote the seed.
+    seed       : RNG seed for that subsample, so a figure is reproducible.
     """
     import plotly.graph_objects as go
+
+    if max_lines is not None and len(df) > max_lines:
+        if 'regime' in df.columns:
+            per = max(1, max_lines // max(1, df['regime'].nunique()))
+            df = (df.groupby('regime', group_keys=False)
+                    .apply(lambda g: g.sample(min(len(g), per), random_state=seed)))
+        else:
+            df = df.sample(max_lines, random_state=seed)
+
+    if line_opacity is None:
+        line_opacity = _auto_opacity(len(df))
 
     log_dims = set(log_dims)
     dims = [dict(label=lbl, values=vals)
@@ -1513,6 +1567,8 @@ def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
 
     if color_by == 'regime':
         cmap, cscale, tickvals, ticktext = _regime_colorbar(df['regime'])
+        if line_opacity < 1.0:
+            cscale = [[pos, _rgba(c, line_opacity)] for pos, c in cscale]
         codes = df['regime'].map(cmap).to_numpy(dtype=float)
         line = dict(color=codes, colorscale=cscale,
                     cmin=-0.5, cmax=len(tickvals) - 0.5, showscale=True,
@@ -1521,7 +1577,13 @@ def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
     else:
         clog = {color_by} if color_by in ('flux', 'permeability') else set()
         cvals, clbl = _pcp_axis(df, color_by, clog)
-        line = dict(color=cvals, colorscale='Viridis', showscale=True,
+        cscale_c = 'Viridis'
+        if line_opacity < 1.0:
+            import matplotlib as _mpl
+            cmap_v = _mpl.colormaps['viridis']
+            cscale_c = [[t, _rgba(_mpl.colors.to_hex(cmap_v(t)), line_opacity)]
+                        for t in np.linspace(0, 1, 9)]
+        line = dict(color=cvals, colorscale=cscale_c, showscale=True,
                     colorbar=dict(title=clbl))
 
     # Only pin an explicit (wide) width when there are MANY axes (else the titles
