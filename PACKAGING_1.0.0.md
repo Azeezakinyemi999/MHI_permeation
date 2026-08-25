@@ -3,7 +3,9 @@
 Scope record for the offline Docker deliverable. Captures decisions that are not
 recoverable from the code, so a later reader does not have to re-derive them.
 
-Status: **`hydrogen-model:1.0.1` released 2026-08-24**, superseding 1.0.0.
+Status: **`hydrogen-model:1.1.0` released 2026-08-25**, superseding 1.0.1 and 1.0.0.
+Adds offline plotly vector export (kaleido 0.2.1) and publication-grade figure
+styling. Image id `sha256:b2606476c360...`, 107 locked packages, 333 MB package.
 Built, both gates passing offline as non-root, notebooks executed, exported,
 checksummed, and verified by deleting the image and restoring it from the
 archive alone — including a real Linux filesystem ownership test.
