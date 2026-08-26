@@ -742,26 +742,15 @@ PLOT_STYLE = {
     'grid_alpha':           0.3,
 }
 
-# Colour-vision-safe (Okabe-Ito). Mirrors calculations.plotstyle.LEVEL_COLORS;
-# kept as literals so this study file stays standalone, but the two must agree.
-#
-# The previous named-colour set failed quantitative checks: 'red' (L5) and
-# 'crimson' (L4_both) sat at deltaE 7.7 for NORMAL vision -- below the deltaE 15
-# floor, so full-colour readers could not reliably separate them -- and 'cyan'
-# (L3) had 1.22:1 contrast on white, effectively invisible in print.
-#
-# Six chromatic hues cover eight levels, so L2a and L5 share blue. They are
-# separated in CURVE_STYLES by linestyle and marker; if you plot them together
-# using COLORS alone, add a distinguishing linestyle yourself.
 COLORS = {
-    'L1':       '#000000',   # perfect-metal reference; black by convention
-    'L2a':      '#0072B2',   # blue
-    'L2b':      '#56B4E9',   # sky blue
-    'L3':       '#CC79A7',   # reddish purple
-    'L4_gb':    '#009E73',   # bluish green
-    'L4_trap':  '#E69F00',   # orange
-    'L4_both':  '#D55E00',   # vermillion
-    'L5':       '#0072B2',   # blue
+    'L1':       'black',
+    'L2a':      'blue',
+    'L2b':      'purple',
+    'L3':       'cyan',
+    'L4_gb':    'green',
+    'L4_trap':  'orange',
+    'L4_both':  'crimson',
+    'L5':       'red',
 }
 
 # =============================================================================
@@ -773,20 +762,17 @@ CURVE_STYLES = {
     # Model levels
     'L1':       {'color': 'black',   'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},
     'L1_L6':    {'color': 'black',   'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
-    'L2a':      {'color': '#0072B2', 'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},  # blue
-    'L2a_L6':   {'color': '#0072B2', 'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
-    'L2b':      {'color': '#56B4E9',  'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},
-    'L2_L6':    {'color': '#56B4E9',  'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
-    'L3':       {'color': '#CC79A7',    'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},
-    'L3_L6':    {'color': '#CC79A7',    'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
-    'L4_gb':    {'color': '#009E73',   'ls': '-',    'marker': '^',  'lw': 2.5, 'ms': 6},
-    'L4_trap':  {'color': '#E69F00',  'ls': '-',    'marker': 'v',  'lw': 2.5, 'ms': 6},
-    'L4_both':  {'color': '#D55E00', 'ls': '-',    'marker': 'D',  'lw': 2.5, 'ms': 6},
-    # L5 reuses L2a's blue (six chromatic hues, eight levels), so it is
-    # separated on linestyle AND marker, not colour. Heavier line because
-    # it is the full-system result these figures build toward.
-    'L5':       {'color': '#0072B2', 'ls': '-.',   'marker': '*',  'lw': 3.0, 'ms': 8},
-    'L3_L4_L6': {'color': '#D55E00', 'ls': ':',    'marker': 'X',  'lw': 2.5, 'ms': 6},
+    'L2a':      {'color': '#1f77b4', 'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},  # blue
+    'L2a_L6':   {'color': '#1f77b4', 'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
+    'L2b':      {'color': 'purple',  'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},
+    'L2_L6':    {'color': 'purple',  'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
+    'L3':       {'color': 'cyan',    'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},
+    'L3_L6':    {'color': 'teal',    'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
+    'L4_gb':    {'color': 'green',   'ls': '-',    'marker': '^',  'lw': 2.5, 'ms': 6},
+    'L4_trap':  {'color': 'orange',  'ls': '-',    'marker': 'v',  'lw': 2.5, 'ms': 6},
+    'L4_both':  {'color': 'crimson', 'ls': '-',    'marker': 'D',  'lw': 2.5, 'ms': 6},
+    'L5':       {'color': 'red',     'ls': '-',    'marker': 'o',  'lw': 2.5, 'ms': 6},
+    'L3_L4_L6': {'color': 'red',     'ls': '--',   'marker': 's',  'lw': 2.5, 'ms': 6},
 
     # Defect fractions (used in L3 sweep plots)
     'f_0':      {'color': 'black',   'ls': '-',    'marker': None, 'lw': 2.5, 'ms': 0},
@@ -800,16 +786,11 @@ CURVE_STYLES = {
     'crack':    {'color': '#FF9800', 'ls': '-.',   'marker': 's',  'lw': 2.0, 'ms': 5},  # orange
     'gb':       {'color': '#4CAF50', 'ls': ':',    'marker': 'D',  'lw': 2.0, 'ms': 5},  # green
 
-    # Rate-limiting regions (shading). A filled band carries no linestyle or
-    # marker, so colour alone must do the work -- which is why the old Material
-    # palette was the worst offender here: '#4CAF50' (mixed) and '#FF9800'
-    # (oxide) sat at deltaE 3.6 under protanopia with no fallback channel.
-    # These are the hues the sensitivity parallel-coordinates plots use for the
-    # same regimes, so a regime reads as one colour across the whole paper.
-    'surface_region': {'color': '#009E73', 'alpha': 0.25},  # bluish green
-    'oxide_region':   {'color': '#D55E00', 'alpha': 0.25},  # vermillion
-    'metal_region':   {'color': '#0072B2', 'alpha': 0.25},  # blue
-    'mixed_region':   {'color': '#E69F00', 'alpha': 0.25},  # orange
+    # Rate-limiting regions (shading)
+    'surface_region': {'color': '#F44336', 'alpha': 0.9},  # red
+    'oxide_region':   {'color': '#FF9800', 'alpha': 0.9},  # orange
+    'metal_region':   {'color': '#2196F3', 'alpha': 0.9},  # blue
+    'mixed_region':   {'color': '#4CAF50', 'alpha': 0.9},  # green
 
     # Reference lines (slopes, theory)
     'slope_1':  {'color': '#F44336', 'ls': '--',   'lw': 1.5, 'alpha': 0.6},
