@@ -1165,11 +1165,21 @@ def summarize_givendata(results, param_names):
                      else np.full(len(param_names), np.nan))
             s1 = (np.asarray(entry['delta']['S1']) if 'delta' in entry
                   else np.full(len(param_names), np.nan))
+            # The bootstrap half-widths are what make a published delta figure
+            # defensible -- without them a reader cannot tell whether a rank
+            # difference is real. delta_analyzer computes them at conf_level=0.95
+            # and they used to be dropped here, so no saved CSV carried them.
+            delta_conf = (np.asarray(entry['delta']['delta_conf']) if 'delta' in entry
+                          else np.full(len(param_names), np.nan))
+            s1_conf = (np.asarray(entry['delta']['S1_conf']) if 'delta' in entry
+                       else np.full(len(param_names), np.nan))
             floor = entry.get('floor', np.nan)
             for j, p in enumerate(param_names):
                 rows.append({'regime': reg, 'metric': m, 'parameter': p,
                              'pawn_median': pawn_med[j], 'delta': delta[j],
-                             'S1_givendata': s1[j], 'n': entry['n'],
+                             'delta_conf': delta_conf[j],
+                             'S1_givendata': s1[j], 'S1_conf': s1_conf[j],
+                             'n': entry['n'],
                              # dummy-parameter noise floor and this parameter's
                              # margin over it — <=1 means "not resolved"
                              'floor': floor,
@@ -1179,36 +1189,110 @@ def summarize_givendata(results, param_names):
     return pd.DataFrame(rows)
 
 
-def plot_givendata_results(results, regime, output_metric, param_names, top_n=15, show=True):
-    """Bar plots of PAWN median and Borgonovo-delta (with conf) for one regime+metric."""
+def plot_givendata_results(results, regime, output_metric, param_names, top_n=15,
+                           show=True, column='double', save_stem=None):
+    """
+    Publication figure: Borgonovo delta and PAWN median for one regime + metric.
+
+    Drawn at final printed size for the requested Elsevier `column` ('single',
+    'onehalf', 'double'), so nothing is rescaled and no font drops below 7 pt.
+    Pass `save_stem` to write vector PDF + 600 dpi PNG.
+
+    Three things this shows that a plain bar chart does not:
+
+    * **95% bootstrap intervals on delta.** Without them a reader cannot tell
+      whether a rank difference is real, and in this model the tail parameters
+      typically sit within a few percent of each other.
+    * **The dummy-parameter noise floor**, as a vertical rule. A parameter whose
+      interval straddles the floor is not resolved by the design at all, which is
+      a far more useful statement than its position in a ranking.
+    * **Unresolved parameters greyed out**, so the eye is not drawn to ranking
+      noise.
+
+    Colours come from `calculations.plotstyle`, whose regime palette is checked
+    for colour-vision separation; the previous `coral`/`steelblue` pair was not.
+    """
+    from calculations import plotstyle as ps
+
     entry = results[regime][output_metric]
     if 'skipped' in entry:
         print(f"[{regime}/{output_metric}] skipped: {entry['skipped']}")
         return None
+
     names = list(param_names)
     pawn_med = np.asarray(entry['pawn']['median']) if 'pawn' in entry else None
     delta = np.asarray(entry['delta']['delta']) if 'delta' in entry else None
     delta_conf = np.asarray(entry['delta']['delta_conf']) if 'delta' in entry else None
+    floor = entry.get('floor', np.nan)
 
-    order = np.argsort(delta if delta is not None else pawn_med)[::-1][:top_n]
+    rank_on = delta if delta is not None else pawn_med
+    order = np.argsort(rank_on)[::-1][:top_n][::-1]   # ascending for barh
     n_panels = sum(x is not None for x in (pawn_med, delta))
-    fig, axes = plt.subplots(1, n_panels, figsize=(7 * n_panels, max(4, 0.35 * len(order))))
-    if n_panels == 1:
-        axes = [axes]
+
+    # Height follows the row count so bar thickness stays constant across figures
+    # with different top_n; width is fixed by the column spec.
+    width = ps.WIDTHS[column]
+    height = min(0.16 * len(order) + 0.55, width * 1.35)
+    ps.apply(column)
+    fig, axes = plt.subplots(1, n_panels, figsize=(width, height), sharey=True)
+    axes = np.atleast_1d(axes)
+
+    base = ps.regime_color(regime)
+    y = np.arange(len(order))
+    # "Resolved" means the LOWER 95% bound clears the noise floor. Judging on the
+    # point estimate alone would colour parameters as resolved whose intervals
+    # straddle the floor -- the exact over-reading these figures should prevent.
+    if delta is not None and np.isfinite(floor):
+        lo = delta[order] - (delta_conf[order] if delta_conf is not None else 0.0)
+        resolved = lo > floor
+    else:
+        resolved = np.ones(len(order), dtype=bool)
+
     ax_i = 0
     if delta is not None:
         ax = axes[ax_i]; ax_i += 1
-        ax.barh([names[i] for i in order][::-1], delta[order][::-1],
-                xerr=delta_conf[order][::-1], color='coral', alpha=0.8)
-        ax.set_title(f'Borgonovo δ — {regime} / {output_metric}  (n={entry["n"]})')
-        ax.set_xlabel('δ (moment-independent)')
+        colors = [base if r else '#c8c8c8' for r in resolved]
+        ax.barh(y, delta[order], height=0.7, color=colors, edgecolor='none', zorder=3)
+        if delta_conf is not None and np.isfinite(delta_conf[order]).any():
+            ax.errorbar(delta[order], y, xerr=delta_conf[order], fmt='none',
+                        ecolor='#333333', elinewidth=0.6, capsize=1.5, zorder=4)
+        if np.isfinite(floor):
+            ax.axvline(floor, color='#333333', lw=0.7, ls=(0, (3, 2)), zorder=5)
+            # Label above the axes, not inside them: rotated in-plot text collides
+            # with the parameter names on the left.
+            ax.annotate('noise floor', xy=(floor, 1.0), xycoords=('data', 'axes fraction'),
+                        xytext=(0, 2), textcoords='offset points',
+                        fontsize=ps.FONT['annotation'], color='#333333',
+                        ha='center', va='bottom')
+        ax.set_xlabel(r'Borgonovo $\delta$')
+        ax.set_xlim(left=0)
+        ax.grid(axis='y', visible=False)
+
     if pawn_med is not None:
         ax = axes[ax_i]
-        ax.barh([names[i] for i in order][::-1], pawn_med[order][::-1],
-                color='steelblue', alpha=0.8)
-        ax.set_title(f'PAWN median — {regime} / {output_metric}')
-        ax.set_xlabel('PAWN KS (median)')
+        ax.barh(y, pawn_med[order], height=0.7, color=base, alpha=0.55,
+                edgecolor='none', zorder=3)
+        ax.set_xlabel('PAWN median (KS)')
+        ax.set_xlim(left=0)
+        ax.grid(axis='y', visible=False)
+
+    axes[0].set_yticks(y)
+    axes[0].set_yticklabels([names[i] for i in order])
+    for ax in axes:
+        ax.spines['left'].set_visible(False)
+        # length=0 on every panel: with sharey the later panels still draw tick
+        # stubs at x=0, which read as stray marks against the bars.
+        ax.tick_params(axis='y', length=0)
+
+    # Panel identity goes in the caption, not on the axes -- journals set the
+    # caption and a baked-in title duplicates it. n is reported here because it
+    # is data provenance rather than decoration.
+    fig.suptitle(f'{regime} regime, {output_metric}  (n = {entry["n"]})',
+                 fontsize=ps.FONT['title'], y=1.06)
     fig.tight_layout()
+
+    if save_stem:
+        ps.save_figure(fig, save_stem, target=column)
     if show:
         plt.show()
     return fig
@@ -1270,6 +1354,9 @@ def regime_comparison_matrix(givendata_results, output_metric, param_names,
     return mat
 
 
+FONT_ANNOT = 7.0   # Elsevier minimum at final printed size
+
+
 def plot_regime_comparison_heatmap(givendata_results, output_metric, param_names,
                                    index='delta', top_union=12, normalize='column',
                                    show_raw=True, show=True):
@@ -1308,7 +1395,10 @@ def plot_regime_comparison_heatmap(givendata_results, output_metric, param_names
     col_w, row_h = (1.9, 0.55) if show_raw else (1.6, 0.45)
     fig, ax = plt.subplots(figsize=(col_w * colour_mat.shape[1] + 3,
                                     row_h * colour_mat.shape[0] + 2))
-    im = ax.imshow(colour_mat.values, cmap='YlOrRd', aspect='auto',
+    # 'viridis' is perceptually uniform and monotonic in lightness, so the
+    # figure still reads if the journal prints it greyscale. 'YlOrRd' is
+    # multi-hue and its light end disappears against white.
+    im = ax.imshow(colour_mat.values, cmap='viridis', aspect='auto',
                    vmin=vmin, vmax=vmax)
     ax.set_xticks(range(colour_mat.shape[1]))
     ax.set_xticklabels(colour_mat.columns, rotation=0)
@@ -1317,27 +1407,28 @@ def plot_regime_comparison_heatmap(givendata_results, output_metric, param_names
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label(f'{index} (fraction of column max)' if normalized else f'{index}')
 
-    flip = (vmax if normalized else np.nanmax(colour_mat.values)) * 0.6
+    # ONE number per cell. The previous dual annotation stamped a normalized value
+    # centred plus a raw value in the corner -- 72 numbers over 36 cells, which
+    # turns the colour encoding into decoration and leaves a reader unsure which
+    # figure to quote. Raw magnitudes belong in a supplementary table; call
+    # regime_comparison_matrix(..., normalize=None).to_latex() for one.
+    # Text contrast follows the RAMP's lightness, not the value's magnitude.
+    # viridis runs dark->bright, the opposite of YlOrRd, so low cells need light
+    # text and high cells need dark text. Carrying the YlOrRd rule across put
+    # white on bright yellow and near-black on dark purple -- both unreadable.
+    flip = (vmax if normalized else np.nanmax(colour_mat.values)) * 0.55
     for i in range(colour_mat.shape[0]):
         for j in range(colour_mat.shape[1]):
             v = colour_mat.values[i, j]
             if not np.isfinite(v):
                 continue
-            ax.text(j, i, f'{v:.2f}', ha='center', va='center', fontsize=9,
-                    color='black' if v < flip else 'white')
-            if show_raw:
-                r = raw.values[i, j]
-                if np.isfinite(r):
-                    # translucent white box keeps black text legible on any fill
-                    ax.text(j + 0.45, i - 0.39, f'{r:.3f}', ha='right', va='top',
-                            fontsize=6.5, color='black',
-                            bbox=dict(boxstyle='round,pad=0.15', fc='white',
-                                      ec='none', alpha=0.65))
+            ax.text(j, i, f'{v:.2f}', ha='center', va='center',
+                    fontsize=FONT_ANNOT,
+                    color='#1a1a1a' if v > flip else '#f0f0f0')
 
     title = f'Cross-regime sensitivity ({index}) — {output_metric}'
     if normalized:
-        title += ('\ncolour + large number = normalized to column max'
-                  + ('; corner = raw value' if show_raw else ''))
+        title += '\nnormalized to column max'
     ax.set_title(title)
     fig.tight_layout()
     if show:
@@ -1353,7 +1444,14 @@ def plot_regime_comparison_heatmap(givendata_results, output_metric, param_names
 # Canonical ordering/colour per regime across BOTH model levels: 'surface' only
 # occurs at L5L6, 'defect' only at L5.
 REGIME_COLOR_CODE   = {'surface': 0, 'oxide': 1, 'metal': 2, 'defect': 3}
-_REGIME_BAND_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+# Okabe-Ito, mirroring calculations.plotstyle.REGIME_COLORS. The previous tab10
+# quartet put metal '#2ca02c' and oxide '#ff7f0e' at ΔE 0.7 under protanopia --
+# i.e. identical to ~1% of male readers, for the one encoding these figures
+# exist to convey. This set's worst all-pairs separation is ΔE 11.0 (deuteranopia).
+_REGIME_BAND_COLORS = ['#009E73',   # surface  (bluish green)
+                       '#D55E00',   # oxide    (vermillion)
+                       '#0072B2',   # metal    (blue)
+                       '#E69F00']   # defect   (orange)
 
 
 def _regime_colorbar(labels):
@@ -1397,9 +1495,37 @@ def _pcp_axis(df, col, log_dims):
     return v, col
 
 
+def _rgba(hex_color, alpha):
+    """'#RRGGBB' -> 'rgba(r,g,b,alpha)'. Plotly's Parcoords has no per-line
+    opacity, so transparency has to be baked into the colorscale entries."""
+    h = hex_color.lstrip('#')
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f'rgba({r},{g},{b},{alpha:.3f})'
+
+
+def _auto_opacity(n):
+    """Line opacity for `n` overplotted polylines.
+
+    A parallel-coordinates plot of a few thousand opaque lines is a solid wash in
+    its dense regions, and no palette fixes that -- the full regime dataset is
+    ~4500 rows. Roughly 400 visually distinct lines is where structure stays
+    readable, so fade beyond that.
+
+    The floor is 0.25, not lower. Plotly's Parcoords derives the colorbar from
+    the same colorscale as the lines, so alpha fades the legend swatches too; at
+    0.09 (what 4500 rows would otherwise give) the regime keys wash out to near
+    white and identity is lost. Below roughly 0.25, reach for `max_lines`
+    instead -- subsampling thins the plot while leaving colour at full strength.
+    """
+    if n <= 400:
+        return 1.0
+    return float(min(1.0, max(0.25, 400.0 / n)))
+
+
 def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
                                  title='', save_html=None,
-                                 width=None, height=520, labelangle=30):
+                                 width=None, height=520, labelangle=30,
+                                 line_opacity=None, max_lines=None, seed=0):
     """
     Per-sample parallel-coordinates plot (covers views A/B/D).
 
@@ -1410,8 +1536,30 @@ def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
     save_html  : optional path to write a standalone interactive HTML.
     width      : figure width in px; default scales with the number of axes so the
                  axis titles don't overlap. height/labelangle tune layout.
+    line_opacity : per-line alpha. None (default) picks one from the row count via
+                 `_auto_opacity`; pass 1.0 to restore fully opaque lines.
+    max_lines  : if set and the frame is larger, draw a reproducible stratified
+                 subsample of this many rows (equal share per regime where a
+                 'regime' column exists). Density is what makes these figures
+                 unreadable in print, and this is the honest way to reduce it --
+                 it thins the plot without fading the colour, so the regime keys
+                 stay full strength. **~800 is the recommended value for a
+                 publication figure**; state in the caption that a subsample is
+                 shown and quote the seed.
+    seed       : RNG seed for that subsample, so a figure is reproducible.
     """
     import plotly.graph_objects as go
+
+    if max_lines is not None and len(df) > max_lines:
+        if 'regime' in df.columns:
+            per = max(1, max_lines // max(1, df['regime'].nunique()))
+            df = (df.groupby('regime', group_keys=False)
+                    .apply(lambda g: g.sample(min(len(g), per), random_state=seed)))
+        else:
+            df = df.sample(max_lines, random_state=seed)
+
+    if line_opacity is None:
+        line_opacity = _auto_opacity(len(df))
 
     log_dims = set(log_dims)
     dims = [dict(label=lbl, values=vals)
@@ -1419,6 +1567,8 @@ def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
 
     if color_by == 'regime':
         cmap, cscale, tickvals, ticktext = _regime_colorbar(df['regime'])
+        if line_opacity < 1.0:
+            cscale = [[pos, _rgba(c, line_opacity)] for pos, c in cscale]
         codes = df['regime'].map(cmap).to_numpy(dtype=float)
         line = dict(color=codes, colorscale=cscale,
                     cmin=-0.5, cmax=len(tickvals) - 0.5, showscale=True,
@@ -1427,7 +1577,13 @@ def parallel_coordinates_samples(df, dimensions, color_by='regime', log_dims=(),
     else:
         clog = {color_by} if color_by in ('flux', 'permeability') else set()
         cvals, clbl = _pcp_axis(df, color_by, clog)
-        line = dict(color=cvals, colorscale='Viridis', showscale=True,
+        cscale_c = 'Viridis'
+        if line_opacity < 1.0:
+            import matplotlib as _mpl
+            cmap_v = _mpl.colormaps['viridis']
+            cscale_c = [[t, _rgba(_mpl.colors.to_hex(cmap_v(t)), line_opacity)]
+                        for t in np.linspace(0, 1, 9)]
+        line = dict(color=cvals, colorscale=cscale_c, showscale=True,
                     colorbar=dict(title=clbl))
 
     # Only pin an explicit (wide) width when there are MANY axes (else the titles

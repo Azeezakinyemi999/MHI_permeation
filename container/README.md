@@ -11,10 +11,10 @@ Verified to run with networking fully disabled.
 ## What you received
 
 ```
-Hydrogen_Model_Environment_1.0.1/
+Hydrogen_Model_Environment_1.1.0/
 ├── image/
-│   ├── hydrogen-model-1.0.1.tar      the container image
-│   └── hydrogen-model-1.0.1.sha256   checksum for the above
+│   ├── hydrogen-model-1.1.0.tar      the container image
+│   └── hydrogen-model-1.1.0.sha256   checksum for the above
 ├── scripts/
 │   ├── verify.sh                     run the two acceptance gates
 │   └── start.sh                      launch JupyterLab
@@ -42,15 +42,15 @@ The container runs as a **non-root** user and needs no elevated privileges.
 **1. Check the archive is intact.** From the package root:
 
 ```bash
-shasum -a 256 -c image/hydrogen-model-1.0.1.sha256
+shasum -a 256 -c image/hydrogen-model-1.1.0.sha256
 ```
-Expect `image/hydrogen-model-1.0.1.tar: OK`. On Linux without `shasum`, use
+Expect `image/hydrogen-model-1.1.0.tar: OK`. On Linux without `shasum`, use
 `sha256sum -c`. If this fails, the transfer was corrupted — do not proceed.
 
 **2. Load the image.**
 
 ```bash
-docker load -i image/hydrogen-model-1.0.1.tar
+docker load -i image/hydrogen-model-1.1.0.tar
 docker images hydrogen-model
 ```
 
@@ -62,7 +62,7 @@ docker images hydrogen-model
 This runs with `--network none` and must end with:
 
 ```
-VERIFICATION PASSED — hydrogen-model:1.0.1 is the validated environment.
+VERIFICATION PASSED — hydrogen-model:1.1.0 is the validated environment.
 ```
 
 It checks two separate things: that all 106 pinned packages are exactly the
@@ -140,15 +140,29 @@ Please include:
 
 - the output of `./scripts/verify.sh` in full
 - `docker --version` and your OS
-- `docker image inspect hydrogen-model:1.0.1 --format '{{.Id}} {{.Architecture}}'`
+- `docker image inspect hydrogen-model:1.1.0 --format '{{.Id}} {{.Architecture}}'`
 - which notebook and which cell, with the error text
 
 ## Version
 
-`hydrogen-model:1.0.1` — Python 3.12, linux/amd64. Cite this tag alongside any
+`hydrogen-model:1.1.0` — Python 3.12, linux/amd64. Cite this tag alongside any
 results, so they can be tied back to a known environment.
 
-### Changes since 1.0.0
+### Changes since 1.0.1
+
+Adds `kaleido` so plotly figures export to vector PDF/SVG offline — previously
+the parallel-coordinates figures existed only as HTML and could not be placed in
+a manuscript. `kaleido` is pinned to 0.2.1 deliberately: 1.x drives a real Chrome
+browser, which is neither present in this image nor installable without network.
+`plotly` is pinned alongside it for the same reason.
+
+The model's figure styling also changed: figures are now drawn at Elsevier
+column widths with fonts that stay above 7 pt at final printed size, vector
+output, and colour-vision-safe palettes. Sensitivity figures now carry 95%
+bootstrap intervals and the noise floor. No computed value changed — the
+numerically significant packages are identical to 1.0.0.
+
+### Changes in 1.0.1
 
 1.0.0 required `--user "$(id -u):0"`; running it as `--user "$(id -u):$(id -g)"`
 — the more natural form — failed with
